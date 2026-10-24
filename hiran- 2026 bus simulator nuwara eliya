@@ -1,0 +1,917 @@
+```html
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Sri Lanka Bus Simulator 3D - Nuwara Eliya Edition</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
+    }
+    body, html {
+      margin: 0;
+      padding: 0;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background: #000;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    }
+    #canvas-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+    }
+    canvas {
+      width: 100% !important;
+      height: 100% !important;
+      display: block;
+    }
+
+    /* GLASS HUD STYLE */
+    .glass-hud {
+      background: rgba(15, 23, 42, 0.75);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+    }
+
+    /* BUS DASHBOARD OVERLAY */
+    .cockpit-frame {
+      pointer-events: none;
+      position: absolute;
+      inset: 0;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    /* TOP WINDSHIELD ARCH AND MIRRORS */
+    .windshield-top {
+      height: 18%;
+      background: linear-gradient(to bottom, rgba(15, 15, 18, 0.95) 0%, rgba(15, 15, 18, 0.4) 70%, transparent 100%);
+      border-bottom: 3px solid rgba(40, 40, 45, 0.8);
+      position: relative;
+    }
+
+    /* SIDE MIRRORS */
+    .side-mirror {
+      position: absolute;
+      top: 15px;
+      width: 85px;
+      height: 140px;
+      background: #111;
+      border: 3px solid #333;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.8);
+      pointer-events: auto;
+    }
+    .side-mirror-left { left: 15px; transform: perspective(300px) rotateY(15deg); }
+    .side-mirror-right { right: 15px; transform: perspective(300px) rotateY(-15deg); }
+    .side-mirror canvas { width: 100% !important; height: 100% !important; }
+
+    /* DASHBOARD BOTTOM PANEL */
+    .dashboard-panel {
+      height: 38%;
+      background: linear-gradient(to top, #0d0e12 85%, #181a20 98%, rgba(30,30,35,0.7) 100%);
+      border-top: 5px solid #2a2c33;
+      box-shadow: 0 -10px 30px rgba(0,0,0,0.9);
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 15px 10px 15px;
+      pointer-events: auto;
+    }
+
+    /* STEERING WHEEL */
+    #steering-wheel {
+      width: 170px;
+      height: 170px;
+      border-radius: 50%;
+      background: radial-gradient(circle, #2a2a2e 30%, #151518 80%);
+      border: 14px solid #1f1f23;
+      box-shadow: inset 0 0 12px #000, 0 8px 20px rgba(0,0,0,0.8);
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.05s linear;
+      cursor: grab;
+    }
+    #steering-wheel::before {
+      content: '';
+      position: absolute;
+      width: 14px;
+      height: 70px;
+      background: #444;
+      top: 8px;
+      border-radius: 4px;
+    }
+    #steering-wheel::after {
+      content: '';
+      position: absolute;
+      width: 70px;
+      height: 14px;
+      background: #444;
+      border-radius: 4px;
+    }
+    .horn-cap {
+      width: 50px;
+      height: 50px;
+      background: #252529;
+      border: 2px solid #555;
+      border-radius: 50%;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #999;
+      font-size: 18px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+    }
+
+    /* CONTROL BUTTONS */
+    .ctrl-btn {
+      background: linear-gradient(145deg, #1f232d, #14171f);
+      border: 1px solid rgba(255,255,255,0.15);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.4);
+      transition: all 0.15s ease;
+    }
+    .ctrl-btn:active, .ctrl-btn.active {
+      background: #0284c7;
+      color: #fff;
+      box-shadow: inset 0 2px 4px rgba(0,0,0,0.6);
+      transform: translateY(2px);
+    }
+    .ctrl-btn.active-amber {
+      background: #d97706;
+      color: #fff;
+      box-shadow: 0 0 12px #f59e0b;
+    }
+
+    /* PEDALS */
+    .pedal {
+      width: 50px;
+      border-radius: 8px;
+      background: linear-gradient(180deg, #2a2a30 0%, #111114 100%);
+      border: 2px solid #444;
+      box-shadow: inset 0 0 5px #000, 0 6px 10px rgba(0,0,0,0.6);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-end;
+      padding-bottom: 8px;
+      font-weight: 800;
+      font-size: 10px;
+      letter-spacing: 1px;
+    }
+    .pedal:active, .pedal.active {
+      transform: translateY(4px);
+      border-color: #0284c7;
+    }
+
+    /* PASSENGER NOTIFICATION POPUP */
+    #passenger-toast {
+      transition: opacity 0.3s ease, transform 0.3s ease;
+    }
+  </style>
+</head>
+<body class="bg-black text-white">
+
+  <!-- 3D CANVAS CONTAINER -->
+  <div id="canvas-container"></div>
+
+  <!-- COCKPIT INTERFACE LAYER -->
+  <div class="cockpit-frame">
+    
+    <!-- TOP WINDSHIELD & HUD HEADER -->
+    <div class="windshield-top px-4 pt-3 flex justify-between items-start">
+      
+      <!-- ROUTE BOARD -->
+      <div class="glass-hud rounded-xl px-4 py-2 flex items-center gap-3">
+        <span class="text-2xl">🇱🇰</span>
+        <div>
+          <div class="text-xs font-bold tracking-wider text-amber-400 uppercase">SRI LANKA BUS SIMULATOR</div>
+          <div class="text-sm font-extrabold text-white flex items-center gap-2">
+            <span>Nuwaragala / Nuwara Eliya</span>
+            <i class="fa-solid font-bold fa-arrow-right text-xs text-amber-400"></i>
+            <span>Colombo Express</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- SPEEDOMETER & TRIP INFO -->
+      <div class="glass-hud rounded-xl px-4 py-2 text-right">
+        <div class="flex items-baseline justify-end gap-1">
+          <span id="speed-val" class="text-3xl font-black text-emerald-400">0</span>
+          <span class="text-xs font-bold text-gray-300">KM/H</span>
+        </div>
+        <div class="text-xs text-gray-400 flex items-center justify-end gap-2 mt-0.5">
+          <span><i class="fa-solid fa-road text-amber-400 me-1"></i><span id="dist-val">0.0</span> km</span>
+          <span>|</span>
+          <span><i class="fa-solid fa-users text-sky-400 me-1"></i><span id="passenger-count">0</span>/30</span>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- BUS STOP / PASSENGER ACTION NOTIFICATION -->
+    <div id="passenger-toast" class="absolute top-24 left-1/2 -translate-x-1/2 glass-hud border-amber-500/50 rounded-2xl px-6 py-3 flex items-center gap-4 opacity-0 pointer-events-none transform -translate-y-4 transition-all">
+      <div class="w-10 h-10 rounded-full bg-amber-500/20 border border-amber-400 flex items-center justify-center text-amber-400 text-lg">
+        <i class="fa-solid fa-store"></i>
+      </div>
+      <div>
+        <div class="text-xs text-amber-300 font-bold uppercase tracking-wider" id="toast-title">KADEY TEA BOUTIQUE / BUS STOP</div>
+        <div class="text-sm font-semibold text-white" id="toast-desc">Stop here! Passengers want to get on & off.</div>
+      </div>
+      <button id="btn-door-action" class="pointer-events-auto bg-amber-500 hover:bg-amber-600 active:scale-95 text-black font-extrabold px-4 py-2 rounded-xl text-xs transition">
+        OPEN DOOR 🚪
+      </button>
+    </div>
+
+    <!-- CENTER INSTRUMENT CLUSTER (METER BOARD) -->
+    <div class="absolute bottom-[39%] left-1/2 -translate-x-1/2 flex items-center gap-6 glass-hud px-6 py-2 rounded-t-2xl border-b-0">
+      <!-- TURN SIGNALS -->
+      <button id="btn-sig-left" class="ctrl-btn w-9 h-9 rounded-full flex items-center justify-center text-emerald-400 text-sm">
+        <i class="fa-solid fa-arrow-left"></i>
+      </button>
+
+      <div class="text-center">
+        <div class="text-[10px] text-gray-400 font-bold uppercase tracking-widest">GEAR</div>
+        <div id="gear-display" class="text-xl font-black text-amber-400">D</div>
+      </div>
+
+      <button id="btn-hazard" class="ctrl-btn w-9 h-9 rounded-full flex items-center justify-center text-red-500 text-sm">
+        <i class="fa-solid fa-triangle-exclamation"></i>
+      </button>
+
+      <div class="text-center">
+        <div class="text-[10px] text-gray-400 font-bold uppercase tracking-widest">DOOR</div>
+        <div id="door-status" class="text-xs font-bold text-red-400">CLOSED</div>
+      </div>
+
+      <button id="btn-sig-right" class="ctrl-btn w-9 h-9 rounded-full flex items-center justify-center text-emerald-400 text-sm">
+        <i class="fa-solid fa-arrow-right"></i>
+      </button>
+    </div>
+
+    <!-- DASHBOARD PANEL (BOTTOM CONTROLS) -->
+    <div class="dashboard-panel">
+
+      <!-- LEFT SIDE CONTROLS: STEERING & LIGHTS -->
+      <div class="flex items-center gap-4">
+        <!-- STEERING WHEEL CONTAINER -->
+        <div id="steering-container" class="relative">
+          <div id="steering-wheel">
+            <div class="horn-cap" id="btn-horn">
+              <i class="fa-solid fa-bullhorn"></i>
+            </div>
+          </div>
+        </div>
+
+        <!-- LIGHTS / HORN EXTRA BUTTONS -->
+        <div class="flex flex-col gap-2">
+          <button id="btn-headlights" class="ctrl-btn w-11 h-11 rounded-xl flex flex-col items-center justify-center text-gray-300 text-xs">
+            <i class="fa-solid fa-lightbulb text-sm"></i>
+            <span class="text-[8px] font-bold mt-0.5">LIGHTS</span>
+          </button>
+          <button id="btn-wiper" class="ctrl-btn w-11 h-11 rounded-xl flex flex-col items-center justify-center text-gray-300 text-xs">
+            <i class="fa-solid fa-windshield text-sm"></i>
+            <span class="text-[8px] font-bold mt-0.5">WIPER</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- CENTER CONTROLS: GEAR SELECTOR (D, N, R) -->
+      <div class="flex flex-col items-center gap-2">
+        <div class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">GEAR BOX</div>
+        <div class="flex gap-1 bg-black/60 p-1.5 rounded-xl border border-white/10">
+          <button id="gear-r" class="ctrl-btn px-3 py-2 rounded-lg font-black text-xs text-gray-300">R</button>
+          <button id="gear-n" class="ctrl-btn px-3 py-2 rounded-lg font-black text-xs text-gray-300">N</button>
+          <button id="gear-d" class="ctrl-btn px-3 py-2 rounded-lg font-black text-xs active text-white">D</button>
+        </div>
+      </div>
+
+      <!-- RIGHT SIDE CONTROLS: PEDALS (BRAKE & ACCELERATOR) -->
+      <div class="flex items-end gap-3 h-36">
+        <!-- BRAKE PEDAL -->
+        <button id="btn-brake" class="pedal h-24 text-red-400">
+          <i class="fa-solid fa-stop text-lg mb-2"></i>
+          BRAKE
+        </button>
+
+        <!-- ACCELERATOR PEDAL -->
+        <button id="btn-accel" class="pedal h-32 text-emerald-400">
+          <i class="fa-solid fa-gauge-high text-lg mb-2"></i>
+          GAS
+        </button>
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- THREE.JS LIBRARY -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+  <script>
+    /* =========================================================================
+       SRI LANKA BUS SIMULATOR - THREE.JS SIMULATION LOGIC
+       ========================================================================= */
+
+    let scene, camera, renderer;
+    let clock = new THREE.Clock();
+
+    // Vehicle Physics States
+    let speed = 0;
+    let maxSpeed = 1.6;
+    let acceleration = 0.008;
+    let deceleration = 0.005;
+    let brakeForce = 0.025;
+    let distanceTraveled = 0;
+    let currentGear = 'D'; // D, N, R
+    let isAccelerating = false;
+    let isBraking = false;
+    let doorOpen = false;
+
+    // Steering Physics
+    let steeringAngle = 0; // -120 to +120 deg
+    let busHeading = 0;
+    let busX = 0;
+
+    // Lights and Aux States
+    let headlightsOn = false;
+    let wipersOn = false;
+    let wiperAngle = 0;
+    let leftSignalOn = false;
+    let rightSignalOn = false;
+    let hazardOn = false;
+    let signalTimer = 0;
+
+    // Bus Stop & Passenger System
+    let passengerCount = 12;
+    let busStops = [];
+    let currentActiveStop = null;
+    let passengerBoardingInterval = null;
+
+    // Road & Environment Objects
+    let roadSegments = [];
+    const roadSegmentLength = 200;
+    const numSegments = 4;
+    let teaBoutiques = [];
+
+    // Init Scene
+    function init() {
+      const container = document.getElementById('canvas-container');
+
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x87ceeb); // Nuwara Eliya Mountain Sky Blue
+      scene.fog = new THREE.FogExp2(0x87ceeb, 0.0035);
+
+      camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 1000);
+      // Cockpit Viewpoint: Inside Bus Driver Seat
+      camera.position.set(-0.75, 2.25, 1.2);
+      camera.rotation.set(0, 0, 0);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      container.appendChild(renderer.domElement);
+
+      // Lighting
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+      scene.add(ambientLight);
+
+      const sunLight = new THREE.DirectionalLight(0xfff8e7, 1.2);
+      sunLight.position.set(100, 150, 50);
+      sunLight.castShadow = true;
+      sunLight.shadow.mapSize.width = 1024;
+      sunLight.shadow.mapSize.height = 1024;
+      sunLight.shadow.camera.near = 0.5;
+      sunLight.shadow.camera.far = 500;
+      scene.add(sunLight);
+
+      // Build World Environment
+      buildWorld();
+
+      // UI Event Handlers
+      setupUIControls();
+
+      // Resize Listener
+      window.addEventListener('resize', onWindowResize);
+
+      // Start Animation Loop
+      animate();
+    }
+
+    /* -------------------------------------------------------------------------
+       WORLD CREATION (Nuwara Eliya Hill Country & Tea Estates)
+       ------------------------------------------------------------------------- */
+    function buildWorld() {
+      // Create Infinite Road System with Segments
+      for (let i = 0; i < numSegments; i++) {
+        const segment = createRoadSegment(i * roadSegmentLength);
+        scene.add(segment);
+        roadSegments.push(segment);
+      }
+    }
+
+    function createRoadSegment(startZ) {
+      const group = new THREE.Group();
+      group.position.z = startZ;
+
+      // Main Asphalt Road
+      const roadGeo = new THREE.PlaneGeometry(14, roadSegmentLength);
+      const roadMat = new THREE.MeshStandardMaterial({ color: 0x2b2b2e, roughness: 0.8 });
+      const road = new THREE.Mesh(roadGeo, roadMat);
+      road.rotation.x = -Math.PI / 2;
+      road.position.set(0, 0, roadSegmentLength / 2);
+      road.receiveShadow = true;
+      group.add(road);
+
+      // Yellow Center Line
+      const lineGeo = new THREE.PlaneGeometry(0.35, roadSegmentLength);
+      const lineMat = new THREE.MeshBasicMaterial({ color: 0xfacc15 });
+      const line = new THREE.Mesh(lineGeo, lineMat);
+      line.rotation.x = -Math.PI / 2;
+      line.position.set(0, 0.02, roadSegmentLength / 2);
+      group.add(line);
+
+      // Tea Estate Green Hills Terrain (Left and Right)
+      const terrainGeo = new THREE.PlaneGeometry(250, roadSegmentLength, 16, 16);
+      
+      // Elevate vertices to make hilly terrain
+      const pos = terrainGeo.attributes.position;
+      for (let i = 0; i < pos.count; i++) {
+        let x = pos.getX(i);
+        let y = pos.getY(i);
+        let distFromRoad = Math.abs(x);
+        pos.setZ(i, Math.sin(x * 0.05) * 8 + Math.cos(y * 0.05) * 6 + (distFromRoad > 20 ? (distFromRoad - 20) * 0.3 : 0));
+      }
+      terrainGeo.computeVertexNormals();
+
+      const terrainMat = new THREE.MeshStandardMaterial({ color: 0x1e5631, roughness: 0.9 }); // Lush Tea Green
+
+      // Left Hill
+      const leftTerrain = new THREE.Mesh(terrainGeo, terrainMat);
+      leftTerrain.rotation.x = -Math.PI / 2;
+      leftTerrain.position.set(-132, -0.2, roadSegmentLength / 2);
+      leftTerrain.receiveShadow = true;
+      group.add(leftTerrain);
+
+      // Right Hill
+      const rightTerrain = new THREE.Mesh(terrainGeo, terrainMat);
+      rightTerrain.rotation.x = -Math.PI / 2;
+      rightTerrain.position.set(132, -0.2, roadSegmentLength / 2);
+      rightTerrain.receiveShadow = true;
+      group.add(rightTerrain);
+
+      // Populate Tea Bushes & Pine Trees
+      for (let z = 10; z < roadSegmentLength; z += 18) {
+        // Tea Bushes
+        createTeaBush(group, -12 - Math.random() * 15, z);
+        createTeaBush(group, 12 + Math.random() * 15, z);
+
+        // Mountain Trees
+        if (z % 36 === 0) {
+          createTree(group, -25 - Math.random() * 20, z);
+          createTree(group, 25 + Math.random() * 20, z);
+        }
+      }
+
+      // Add a Tea Boutique / Kadey Bus Stop every 200m
+      createTeaBoutiqueBusStop(group, 10, roadSegmentLength / 2);
+
+      return group;
+    }
+
+    function createTeaBush(parent, x, z) {
+      const bushGeo = new THREE.SphereGeometry(1.8 + Math.random() * 0.5, 8, 8);
+      const bushMat = new THREE.MeshStandardMaterial({ color: 0x2d7d46, roughness: 0.8 });
+      const bush = new THREE.Mesh(bushGeo, bushMat);
+      bush.scale.set(1.4, 0.7, 1.4);
+      bush.position.set(x, 0.8, z);
+      bush.castShadow = true;
+      parent.add(bush);
+    }
+
+    function createTree(parent, x, z) {
+      const treeGroup = new THREE.Group();
+
+      // Trunk
+      const trunkGeo = new THREE.CylinderGeometry(0.4, 0.7, 6);
+      const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a2e18 });
+      const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+      trunk.position.y = 3;
+      treeGroup.add(trunk);
+
+      // Pine Cone Foliage
+      const foliageMat = new THREE.MeshStandardMaterial({ color: 0x14452f });
+      for (let i = 0; i < 3; i++) {
+        const foliageGeo = new THREE.ConeGeometry(3.5 - i * 0.8, 4, 8);
+        const foliage = new THREE.Mesh(foliageGeo, foliageMat);
+        foliage.position.y = 5 + i * 2.2;
+        treeGroup.add(foliage);
+      }
+
+      treeGroup.position.set(x, 0, z);
+      parent.add(treeGroup);
+    }
+
+    /* SRI LANKAN "KADEY" TEA BOUTIQUE & BUS STOP */
+    function createTeaBoutiqueBusStop(parent, x, z) {
+      const stopGroup = new THREE.Group();
+      stopGroup.position.set(x, 0, z);
+
+      // Small Wooden Kadey Shop
+      const shopGeo = new THREE.BoxGeometry(7, 4, 5);
+      const shopMat = new THREE.MeshStandardMaterial({ color: 0x8b5a2b });
+      const shop = new THREE.Mesh(shopGeo, shopMat);
+      shop.position.set(2, 2, 0);
+      stopGroup.add(shop);
+
+      // Roof (Corrugated Metal style)
+      const roofGeo = new THREE.ConeGeometry(5.5, 2, 4);
+      const roofMat = new THREE.MeshStandardMaterial({ color: 0xb22222 }); // Red Roof
+      const roof = new THREE.Mesh(roofGeo, roofMat);
+      roof.rotation.y = Math.PI / 4;
+      roof.position.set(2, 5, 0);
+      stopGroup.add(roof);
+
+      // "TEA KADEY" Board
+      const boardGeo = new THREE.BoxGeometry(4, 1, 0.2);
+      const boardMat = new THREE.MeshStandardMaterial({ color: 0xfacc15 });
+      const board = new THREE.Mesh(boardGeo, boardMat);
+      board.position.set(2, 3.8, 2.6);
+      stopGroup.add(board);
+
+      // Bus Stop Pole & Sign
+      const poleGeo = new THREE.CylinderGeometry(0.1, 0.1, 4.5);
+      const poleMat = new THREE.MeshStandardMaterial({ color: 0x777777 });
+      const pole = new THREE.Mesh(poleGeo, poleMat);
+      pole.position.set(-3, 2.25, 3);
+      stopGroup.add(pole);
+
+      const signGeo = new THREE.BoxGeometry(1.6, 1.2, 0.1);
+      const signMat = new THREE.MeshStandardMaterial({ color: 0x0284c7 });
+      const sign = new THREE.Mesh(signGeo, signMat);
+      sign.position.set(-3, 4, 3);
+      stopGroup.add(sign);
+
+      // Passengers waiting at the boutique (Simple Animated 3D Characters)
+      const passengerGroup = new THREE.Group();
+      passengerGroup.name = "passengers";
+
+      for (let p = 0; p < 4; p++) {
+        const person = createPersonMesh();
+        person.position.set(-1.5 + (p * 0.9), 0, 2 + (Math.random() * 1.5));
+        passengerGroup.add(person);
+      }
+      stopGroup.add(passengerGroup);
+
+      parent.add(stopGroup);
+
+      // Register active stop reference
+      busStops.push({
+        group: stopGroup,
+        getWorldZ: () => {
+          const worldPos = new THREE.Vector3();
+          stopGroup.getWorldPosition(worldPos);
+          return worldPos.z;
+        }
+      });
+    }
+
+    function createPersonMesh() {
+      const pGroup = new THREE.Group();
+      
+      // Body / Shirt
+      const bodyGeo = new THREE.CylinderGeometry(0.25, 0.25, 1.2);
+      const bodyMat = new THREE.MeshStandardMaterial({ color: Math.random() * 0xffffff });
+      const body = new THREE.Mesh(bodyGeo, bodyMat);
+      body.position.y = 0.9;
+      pGroup.add(body);
+
+      // Head
+      const headGeo = new THREE.SphereGeometry(0.2, 8, 8);
+      const headMat = new THREE.MeshStandardMaterial({ color: 0xe0ac69 });
+      const head = new THREE.Mesh(headGeo, headMat);
+      head.position.y = 1.7;
+      pGroup.add(head);
+
+      return pGroup;
+    }
+
+    /* -------------------------------------------------------------------------
+       CONTROLS & UI EVENT LISTENERS
+       ------------------------------------------------------------------------- */
+    function setupUIControls() {
+      // Steering Wheel Interactive Drag
+      const wheelEl = document.getElementById('steering-wheel');
+      const containerEl = document.getElementById('steering-container');
+      let isDragging = false;
+      let centerPos = { x: 0, y: 0 };
+
+      const updateSteering = (clientX, clientY) => {
+        const dx = clientX - centerPos.x;
+        const dy = clientY - centerPos.y;
+        let angle = Math.atan2(dy, dx) * (180 / Math.PI) + 90;
+        if (angle > 180) angle -= 360;
+        if (angle < -180) angle += 360;
+
+        steeringAngle = Math.max(-120, Math.min(120, angle));
+        wheelEl.style.transform = `rotate(${steeringAngle}deg)`;
+      };
+
+      containerEl.addEventListener('pointerdown', (e) => {
+        isDragging = true;
+        const rect = containerEl.getBoundingClientRect();
+        centerPos = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+        updateSteering(e.clientX, e.clientY);
+      });
+
+      window.addEventListener('pointermove', (e) => {
+        if (isDragging) updateSteering(e.clientX, e.clientY);
+      });
+
+      const releaseSteer = () => {
+        if (!isDragging) return;
+        isDragging = false;
+        // Smooth return to center
+        let returnInterval = setInterval(() => {
+          steeringAngle *= 0.7;
+          wheelEl.style.transform = `rotate(${steeringAngle}deg)`;
+          if (Math.abs(steeringAngle) < 1) {
+            steeringAngle = 0;
+            wheelEl.style.transform = `rotate(0deg)`;
+            clearInterval(returnInterval);
+          }
+        }, 16);
+      };
+
+      window.addEventListener('pointerup', releaseSteer);
+      window.addEventListener('pointercancel', releaseSteer);
+
+      // Accelerator & Brake Pedals
+      const bindPedal = (id, startFn, endFn) => {
+        const el = document.getElementById(id);
+        el.addEventListener('pointerdown', (e) => { e.preventDefault(); el.classList.add('active'); startFn(); });
+        el.addEventListener('pointerup', (e) => { e.preventDefault(); el.classList.remove('active'); endFn(); });
+        el.addEventListener('pointerleave', () => { el.classList.remove('active'); endFn(); });
+      };
+
+      bindPedal('btn-accel', () => isAccelerating = true, () => isAccelerating = false);
+      bindPedal('btn-brake', () => isBraking = true, () => isBraking = false);
+
+      // Gear Box Selector
+      const gears = { 'gear-r': 'R', 'gear-n': 'N', 'gear-d': 'D' };
+      Object.keys(gears).forEach(id => {
+        document.getElementById(id).addEventListener('click', function() {
+          Object.keys(gears).forEach(k => document.getElementById(k).classList.remove('active', 'text-white'));
+          this.classList.add('active', 'text-white');
+          currentGear = gears[id];
+          document.getElementById('gear-display').innerText = currentGear;
+        });
+      });
+
+      // Door & Passenger Action Button
+      document.getElementById('btn-door-action').addEventListener('click', toggleDoorAndPassengers);
+
+      // Horn Button
+      document.getElementById('btn-horn').addEventListener('click', playHornSound);
+
+      // Light & Wiper Toggles
+      document.getElementById('btn-headlights').addEventListener('click', function() {
+        headlightsOn = !headlightsOn;
+        this.classList.toggle('active', headlightsOn);
+      });
+
+      document.getElementById('btn-wiper').addEventListener('click', function() {
+        wipersOn = !wipersOn;
+        this.classList.toggle('active', wipersOn);
+      });
+
+      // Signals & Hazard Lights
+      document.getElementById('btn-sig-left').addEventListener('click', function() {
+        leftSignalOn = !leftSignalOn;
+        rightSignalOn = false;
+        hazardOn = false;
+        this.classList.toggle('active-amber', leftSignalOn);
+        document.getElementById('btn-sig-right').classList.remove('active-amber');
+        document.getElementById('btn-hazard').classList.remove('active-amber');
+      });
+
+      document.getElementById('btn-sig-right').addEventListener('click', function() {
+        rightSignalOn = !rightSignalOn;
+        leftSignalOn = false;
+        hazardOn = false;
+        this.classList.toggle('active-amber', rightSignalOn);
+        document.getElementById('btn-sig-left').classList.remove('active-amber');
+        document.getElementById('btn-hazard').classList.remove('active-amber');
+      });
+
+      document.getElementById('btn-hazard').addEventListener('click', function() {
+        hazardOn = !hazardOn;
+        leftSignalOn = false;
+        rightSignalOn = false;
+        this.classList.toggle('active-amber', hazardOn);
+        document.getElementById('btn-sig-left').classList.remove('active-amber');
+        document.getElementById('btn-sig-right').classList.remove('active-amber');
+      });
+    }
+
+    /* -------------------------------------------------------------------------
+       PASSENGER & BUS STOP MECHANICS
+       ------------------------------------------------------------------------- */
+    function toggleDoorAndPassengers() {
+      doorOpen = !doorOpen;
+      const statusEl = document.getElementById('door-status');
+
+      if (doorOpen) {
+        statusEl.innerText = "OPEN";
+        statusEl.className = "text-xs font-bold text-emerald-400";
+
+        // Start Boarding / Alighting Process if stopped near a Boutique Bus Stop
+        if (speed === 0 && currentActiveStop) {
+          let countBoarded = 0;
+          passengerBoardingInterval = setInterval(() => {
+            if (countBoarded < 4 && passengerCount < 30) {
+              passengerCount++;
+              countBoarded++;
+              document.getElementById('passenger-count').innerText = passengerCount;
+              
+              // Remove a 3D character mesh from the stop to represent boarding
+              const passGroup = currentActiveStop.group.getObjectByName("passengers");
+              if (passGroup && passGroup.children.length > 0) {
+                passGroup.remove(passGroup.children[0]);
+              }
+            } else {
+              clearInterval(passengerBoardingInterval);
+              showToast("PASSENGERS BOARDED!", "Door ready to close. Resume journey to Colombo!");
+            }
+          }, 600);
+        }
+      } else {
+        statusEl.innerText = "CLOSED";
+        statusEl.className = "text-xs font-bold text-red-400";
+        if (passengerBoardingInterval) clearInterval(passengerBoardingInterval);
+      }
+    }
+
+    function playHornSound() {
+      // Synthesize authentic Sri Lankan bus horn sound using Web Audio API
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+
+      const osc1 = ctx.createOscillator();
+      const osc2 = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc1.type = 'sawtooth';
+      osc2.type = 'square';
+
+      osc1.frequency.setValueAtTime(440, ctx.currentTime); // Dual tone melody
+      osc2.frequency.setValueAtTime(554.37, ctx.currentTime);
+
+      gain.gain.setValueAtTime(0.3, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.8);
+
+      osc1.connect(gain);
+      osc2.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc1.start();
+      osc2.start();
+      osc1.stop(ctx.currentTime + 0.8);
+      osc2.stop(ctx.currentTime + 0.8);
+    }
+
+    function showToast(title, desc) {
+      const toast = document.getElementById('passenger-toast');
+      document.getElementById('toast-title').innerText = title;
+      document.getElementById('toast-desc').innerText = desc;
+      toast.style.opacity = '1';
+      toast.style.transform = 'translate(-50%, 0)';
+      toast.style.pointerEvents = 'auto';
+    }
+
+    function hideToast() {
+      const toast = document.getElementById('passenger-toast');
+      toast.style.opacity = '0';
+      toast.style.transform = 'translate(-50%, -10px)';
+      toast.style.pointerEvents = 'none';
+    }
+
+    /* -------------------------------------------------------------------------
+       MAIN ANIMATION & SIMULATION LOOP
+       ------------------------------------------------------------------------- */
+    function animate() {
+      requestAnimationFrame(animate);
+
+      const delta = clock.getDelta();
+
+      // 1. Vehicle Movement & Gear Dynamics
+      if (doorOpen) {
+        // Bus cannot accelerate while door is open
+        speed = Math.max(0, speed - brakeForce * 1.5);
+      } else {
+        if (isAccelerating) {
+          if (currentGear === 'D') {
+            speed = Math.min(maxSpeed, speed + acceleration);
+          } else if (currentGear === 'R') {
+            speed = Math.max(-maxSpeed * 0.4, speed - acceleration);
+          }
+        } else if (isBraking) {
+          if (speed > 0) speed = Math.max(0, speed - brakeForce);
+          else if (speed < 0) speed = Math.min(0, speed + brakeForce);
+        } else {
+          // Natural Friction Deceleration
+          if (speed > 0) speed = Math.max(0, speed - deceleration);
+          else if (speed < 0) speed = Math.min(0, speed + deceleration);
+        }
+      }
+
+      // 2. Steering & Physics Drift
+      const turnFactor = (steeringAngle / 120) * 0.035;
+      busX += turnFactor * (speed / maxSpeed);
+      busX = Math.max(-4.5, Math.min(4.5, busX)); // Keep within road boundaries
+
+      // Move Infinite Road Segments relative to bus speed
+      distanceTraveled += Math.abs(speed) * 0.08;
+
+      roadSegments.forEach(segment => {
+        segment.position.z -= speed * 18;
+        segment.position.x = -busX;
+
+        // Recycle road segment to loop endlessly
+        if (segment.position.z < -roadSegmentLength) {
+          segment.position.z += numSegments * roadSegmentLength;
+        }
+      });
+
+      // 3. Camera Dynamics (Driver's Head Bounce & Turn Shift)
+      camera.position.x = -0.75 + (turnFactor * 0.5);
+      camera.rotation.y = -turnFactor * 0.4;
+      camera.position.y = 2.25 + Math.sin(clock.getElapsedTime() * 12) * (speed * 0.015); // Engine Vibration
+
+      // 4. Update HUD Indicators
+      const displaySpeed = Math.round(Math.abs(speed) * 65);
+      document.getElementById('speed-val').innerText = displaySpeed;
+      document.getElementById('dist-val').innerText = distanceTraveled.toFixed(1);
+
+      // 5. Bus Stop Distance Check
+      let nearStop = false;
+      busStops.forEach(stop => {
+        const stopZ = stop.getWorldZ();
+        if (Math.abs(stopZ - 20) < 18) { // Nearby bus stop range
+          nearStop = true;
+          currentActiveStop = stop;
+          if (speed === 0) {
+            showToast("TEA KADEY BUS STOP REACHED", "Stop complete! Tap OPEN DOOR for passengers.");
+          } else {
+            showToast("APPROACHING BUS STOP", "Brake now to pick up waiting tea estate passengers!");
+          }
+        }
+      });
+
+      if (!nearStop && currentActiveStop) {
+        currentActiveStop = null;
+        hideToast();
+      }
+
+      // Render Scene
+      renderer.render(scene, camera);
+    }
+
+    function onWindowResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    // Initialize Simulation on Window Load
+    window.onload = function() {
+      init();
+    };
+  </script>
+</body>
+</html>
+```
