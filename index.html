@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#123b2a">
+  <title>Sri Lanka Bus Simulator 3D - Steering Edition</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #8dbdf2; font-family: system-ui, -apple-system, sans-serif; color: #fff; touch-action: none; user-select: none; }
+    canvas { display: block; width: 100%; height: 100%; }
+    #hud { position: absolute; top: 12px; left: 12px; right: 12px; display: flex; justify-content: space-between; align-items: flex-start; pointer-events: none; }
+    .card { background: rgba(18, 59, 42, 0.85); border: 1px solid rgba(255,255,255,0.2); border-radius: 12px; padding: 10px 14px; backdrop-filter: blur(8px); box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+    #controls { position: absolute; bottom: 20px; left: 15px; right: 15px; display: flex; justify-content: space-between; align-items: center; gap: 15px; pointer-events: auto; }
+    
+    #steering-container { width: 140px; height: 140px; position: relative; touch-action: none; display: flex; justify-content: center; align-items: center; }
+    #steering-wheel { width: 130px; height: 130px; border: 12px solid #bdc3c7; border-radius: 50%; position: absolute; display: flex; justify-content: center; align-items: center; box-shadow: 0 8px 20px rgba(0,0,0,0.5); background: rgba(0,0,0,0.2); transition: transform 0.05s linear; }
+    #steering-wheel::before { content: ''; width: 10px; height: 50px; background: #bdc3c7; position: absolute; top: 0; border-radius: 5px; }
+    #steering-wheel::after { content: ''; width: 40px; height: 40px; background: #2c3e50; border: 4px solid #f1c40f; border-radius: 50%; position: absolute; }
+
+    .btn { background: rgba(20, 20, 20, 0.85); border: 2px solid rgba(255,255,255,0.3); color: #fff; font-size: 18px; font-weight: bold; border-radius: 16px; padding: 18px 22px; touch-action: manipulation; box-shadow: 0 6px 14px rgba(0,0,0,0.4); }
+    #accel { background: rgba(18, 120, 50, 0.9); flex-grow: 1; }
+    #brake { background: rgba(150, 30, 30, 0.9); width: 100px; }
+    .pedals { display: flex; gap: 10px; flex-grow: 1; justify-content: flex-end; }
+  </style>
+</head>
+<body>
+  <div id="hud">
+    <div class="card">
+      <div style="font-size: 12px; font-weight: bold; color: #f1c40f;">🇱🇰 SRI LANKA BUS SIMULATOR</div>
+      <div style="font-size: 16px; font-weight: 800;">KANDY → COLOMBO</div>
+    </div>
+    <div class="card" style="text-align: right;">
+      <div id="speed" style="font-size: 24px; font-weight: 900; color: #2ecc71;">0 km/h</div>
+      <div id="dist" style="font-size: 12px; opacity: 0.85;">0.00 km</div>
+    </div>
+  </div>
+
+  <div id="controls">
+    <div id="steering-container">
+      <div id="steering-wheel"></div>
+    </div>
+
+    <div class="pedals">
+      <button class="btn" id="brake">BRAKE</button>
+      <button class="btn" id="accel">ACCELERATE</button>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script>
+    let scene, camera, renderer, bus;
+    let speed = 0, distance = 0;
+    let steeringAngle = 0;
+    let accelerating = false, braking = false;
+    let roadSegments = [];
+    let roadLength = 300;
+
+    function init() {
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x7ec0ee);
+      scene.fog = new THREE.FogExp2(0x7ec0ee, 0.005);
+
+      camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+      camera.position.set(0, 4.5, -9);
+      camera.lookAt(0, 2, 12);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      document.body.appendChild(renderer.domElement);
+
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+      scene.add(ambientLight);
+
+      const sun = new THREE.DirectionalLight(0xffffff, 0.9);
+      sun.position.set(60, 120, 60);
+      sun.castShadow = true;
+      scene.add(sun);
+
+      createRoadEnvironment();
+      create3DBus();
+      setupSteeringControls();
+
+      window.addEventListener('resize', onWindowResize);
+      animate();
+    }
+
+    function createRoadEnvironment() {
+      const roadGeo = new THREE.PlaneGeometry(18, roadLength);
+      const roadMat = new THREE.MeshStandardMaterial({ color: 0x2c3e50, roughness: 0.8 });
+      
+      const grassGeo = new THREE.PlaneGeometry(300, roadLength);
+      const grassMat = new THREE.MeshStandardMaterial({ color: 0x27ae60, roughness: 0.9 });
+
+      for (let i = 0; i < 3; i++) {
+        const roadGroup = new THREE.Group();
+        
+        const road = new THREE.Mesh(roadGeo, roadMat);
+        road.rotation.x = -Math.PI / 2;
+        road.receiveShadow = true;
+        roadGroup.add(road);
+
+        const grass = new THREE.Mesh(grassGeo, grassMat);
+        grass.rotation.x = -Math.PI / 2;
+        grass.position.y = -0.05;
+        roadGroup.add(grass);
+
+        const lineGeo = new THREE.PlaneGeometry(0.4, roadLength);
+        const lineMat = new THREE.MeshBasicMaterial({ color: 0xf1c40f });
+        const line = new THREE.Mesh(lineGeo, lineMat);
+        line.rotation.x = -Math.PI / 2;
+        line.position.y = 0.02;
+        roadGroup.add(line);
+
+        for (let z = -roadLength/2; z < roadLength/2; z += 25) {
+          createTree(roadGroup, -15, z);
+          createTree(roadGroup, 15, z);
+        }
+
+        roadGroup.position.z = i * roadLength - 50;
+        scene.add(roadGroup);
+        roadSegments.push(roadGroup);
+      }
+    }
+
+    function createTree(parent, x, z) {
+      const tree = new THREE.Group();
+      const trunkGeo = new THREE.CylinderGeometry(0.4, 0.6, 3);
+      const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5e3a0f });
+      const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+      trunk.position.y = 1.5;
+      trunk.castShadow = true;
+      tree.add(trunk);
+
+      const leavesGeo = new THREE.ConeGeometry(2.5, 5, 6);
+      const leavesMat = new THREE.MeshStandardMaterial({ color: 0x1e8449, flatShading: true });
+      const leaves = new THREE.Mesh(leavesGeo, leavesMat);
+      leaves.position.y = 4.5;
+      leaves.castShadow = true;
+      tree.add(leaves);
+
+      tree.position.set(x + (Math.random() * 4 - 2), 0, z);
+      parent.add(tree);
+    }
+
+    function create3DBus() {
+      bus = new THREE.Group();
+
+      const bodyGeo = new THREE.BoxGeometry(2.6, 2.8, 6.5);
+      const bodyMat = new THREE.MeshStandardMaterial({ color: 0x2980b9, roughness: 0.2 });
+      const body = new THREE.Mesh(bodyGeo, bodyMat);
+      body.position.y = 1.6;
+      body.castShadow = true;
+      bus.add(body);
+
+      const roofGeo = new THREE.BoxGeometry(2.5, 0.4, 6.3);
+      const roofMat = new THREE.MeshStandardMaterial({ color: 0xc0392b });
+      const roof = new THREE.Mesh(roofGeo, roofMat);
+      roof.position.y = 3.1;
+      bus.add(roof);
+
+      const winGeo = new THREE.BoxGeometry(2.65, 0.9, 5.5);
+      const winMat = new THREE.MeshStandardMaterial({ color: 0x34495e, roughness: 0.1 });
+      const windows = new THREE.Mesh(winGeo, winMat);
+      windows.position.y = 2.1;
+      bus.add(windows);
+
+      scene.add(bus);
+    }
+
+    function setupSteeringControls() {
+      const wheel = document.getElementById('steering-wheel');
+      const container = document.getElementById('steering-container');
+      let active = false;
+      let centerPos = { x: 0, y: 0 };
+
+      container.addEventListener('pointerdown', (e) => {
+        active = true;
+        const rect = container.getBoundingClientRect();
+        centerPos.x = rect.left + rect.width / 2;
+        centerPos.y = rect.top + rect.height / 2;
+        e.preventDefault();
+      });
+
+      window.addEventListener('pointermove', (e) => {
+        if (!active) return;
+        const dx = e.clientX - centerPos.x;
+        const dy = e.clientY - centerPos.y;
+        let angle = Math.atan2(dy, dx) * (180 / Math.PI) + 90;
+        
+        if (angle > 180) angle -= 360;
+        if (angle < -180) angle += 360;
+
+        steeringAngle = Math.max(-90, Math.min(90, angle));
+        wheel.style.transform = `rotate(${steeringAngle}deg)`;
+      });
+
+      const endSteer = () => {
+        if (!active) return;
+        active = false;
+        steeringAngle = 0;
+        wheel.style.transform = `rotate(0deg)`;
+      };
+
+      window.addEventListener('pointerup', endSteer);
+      window.addEventListener('pointercancel', endSteer);
+
+      const bindPedal = (id, start, end) => {
+        const el = document.getElementById(id);
+        el.addEventListener('pointerdown', (e) => { e.preventDefault(); start(); });
+        el.addEventListener('pointerup', (e) => { e.preventDefault(); end(); });
+        el.addEventListener('pointerleave', (e) => { e.preventDefault(); end(); });
+      };
+
+      bindPedal('accel', () => accelerating = true, () => accelerating = false);
+      bindPedal('brake', () => braking = true, () => braking = false);
+    }
+
+    function onWindowResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      if (accelerating) speed += 0.08;
+      else if (braking) speed -= 0.16;
+      else speed -= 0.03;
+
+      speed = Math.max(0, Math.min(speed, 1.4));
+      distance += speed * 0.08;
+
+      let turnSpeed = (steeringAngle / 90) * 0.18;
+      bus.position.x += turnSpeed;
+      bus.position.x = Math.max(-7, Math.min(7, bus.position.x));
+      bus.rotation.y = -turnSpeed * 0.5;
+
+      roadSegments.forEach(road => {
+        road.position.z -= speed;
+        if (road.position.z < -100) {
+          road.position.z += roadLength * 3;
+        }
+      });
+
+      document.getElementById('speed').innerText = Math.round(speed * 90) + ' km/h';
+      document.getElementById('dist').innerText = distance.toFixed(2) + ' km';
+
+      renderer.render(scene, camera);
+    }
+
+    init();
+  </script>
+</body>
+</html>
